@@ -88,6 +88,13 @@ const BX = -2736128;
 const BY = 548864;
 const CELL = 8192;
 
+// Basemap pixel dimensions, taken from layers/basemap.dzi. The navigator is
+// sized to this same aspect ratio; without that it inherits the viewer's
+// shape and letterboxes the map with black bars.
+const MAP_W = 26721;
+const MAP_H = 9241;
+const NAV_WIDTH = 320;
+
 // Overlay layers in draw order (bottom to top), stacked above the always-on
 // basemap. Each must be a DZI tiled from a PNG aligned to the same pixel
 // dimensions/origin as the basemap so the shared mapToPixel math lines up.
@@ -107,6 +114,11 @@ const viewer = OpenSeadragon({
   tileSources: "layers/basemap.dzi",
 
   showNavigator: true,
+
+  // Both must be set, or OpenSeadragon falls back to navigatorSizeRatio and
+  // tracks the viewer's aspect ratio instead of the map's.
+  navigatorWidth: NAV_WIDTH,
+  navigatorHeight: NAV_WIDTH * MAP_H / MAP_W,
 
   drawer: "canvas",
 
