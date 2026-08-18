@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PTR Interactive Map</title>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/6.1.0/openseadragon.min.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    #viewer {
+      width: 100%;
+      height: 100%;
+    }
+
+    #controls {
+      position: absolute;
+      z-index: 10;
+      top: 10px;
+      left: 10px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 5px;
+      font-family: sans-serif;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    }
+
+    #controls input[type="number"] {
+      width: 70px;
+      margin-right: 8px;
+    }
+
+    #controls button {
+      padding: 2px 10px;
+    }
+
+    #layerControls {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(0, 0, 0, 0.15);
+      font-family: sans-serif;
+      font-size: 14px;
+    }
+
+    #layerControls label {
+      display: block;
+      margin: 4px 0;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    #layerControls input[type="checkbox"] {
+      margin-right: 6px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="controls">
+  <form onsubmit="goToCell(); return false;">
+    Cell X:
+    <input id="cellX" type="number" value="0">
+
+    Cell Y:
+    <input id="cellY" type="number" value="0">
+
+    <button type="submit">Go</button>
+  </form>
+
+  <div id="layerControls"></div>
+</div>
+
+<div id="viewer"></div>
+
+<script>
+// Fitted from 4 known corner points (least-squares confirmed uniform scale,
+// zero residual error). X and Y share the same scale factor, so a single
+// SCALE constant is used instead of two separate (and easily-drifting) ones.
+const SCALE = 204.8;
+const BX = -2736128;
+const BY = 548864;
+const CELL = 8192;
+
+// Overlay layers in draw order (bottom to top), stacked above the always-on
+// basemap. Each must be a DZI tiled from a PNG aligned to the same pixel
+// dimensions/origin as the basemap so the shared mapToPixel math lines up.
+const LAYERS = [
+  { id: "roads",             name: "Roads",             url: "layers/roads.dzi",            enabled: true,  opacity: 1.0 },
+  { id: "borders",           name: "Borders",           url: "layers/borders.dzi",          enabled: true,  opacity: 1.0 },
+  { id: "settlement_extent", name: "Settlement Extent", url: "layers/settlement_cells.dzi", enabled: false, opacity: 1.0 },
+  { id: "settlements",       name: "Settlements",       url: "layers/settlements.dzi",      enabled: true,  opacity: 1.0 },
+  { id: "locations",         name: "Locations",         url: "layers/locations.dzi",        enabled: false, opacity: 1.0 },
+  { id: "regions",           name: "Regions",           url: "layers/regions.dzi",          enabled: false, opacity: 1.0 },
+  { id: "grid",              name: "Grid",              url: "layers/gridbase.dzi",         enabled: false, opacity: 1.0 }
+];
+
+const viewer = OpenSeadragon({
+  id: "viewer",
+  prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/6.1.0/images/",
+  tileSources: "layers/basemap.dzi",
+
+  showNavigator: true,
+
+  drawer: "canvas",
+
+  subPixelRoundingForTransparency:
+    OpenSeadragon.SUBPIXEL_ROUNDING_OCCURRENCES.ONLY_AT_REST
+
+});
+
+let selectedCellOverlay = null;
+const layerItems = {}; // id -> OpenSeadragon TiledImage
+
+// Load overlay layers, in order, once the basemap is open so they stack
+// correctly above it (addTiledImage appends on top by default).
+viewer.addHandler("open", function onBaseOpen(event) {
+  // Only run this once, for the basemap itself, not for each overlay
+  // layer as it finishes loading.
+  viewer.removeHandler("open", onBaseOpen);
+  loadLayers();
+});
+
+function loadLayers() {
+  LAYERS.forEach(layer => {
+    viewer.addTiledImage({
+      tileSource: layer.url,
+      opacity: layer.enabled ? layer.opacity : 0,
+      success: (event) => {
+        layerItems[layer.id] = event.item;
+      }
+    });
+  });
+}
+
+function toggleLayer(id, visible) {
+  const item = layerItems[id];
+  const layer = LAYERS.find(l => l.id === id);
+
+  if (item && layer) {
+    item.setOpacity(visible ? layer.opacity : 0);
+  }
+}
+
+function buildLayerControls() {
+  const container = document.getElementById("layerControls");
+
+  LAYERS.forEach(layer => {
+    const label = document.createElement("label");
+    label.innerHTML =
+      `<input type="checkbox"
+              ${layer.enabled ? "checked" : ""}
+              data-layer="${layer.id}">
+       ${layer.name}`;
+
+    container.appendChild(label);
+  });
+
+  container.addEventListener("change", (e) => {
+    if (e.target.dataset.layer) {
+      toggleLayer(e.target.dataset.layer, e.target.checked);
+    }
+  });
+}
+
+buildLayerControls();
+
+function mapToPixel(xMap, yMap) {
+  return {
+    x: (xMap - BX) / SCALE,
+    y: (BY - yMap) / SCALE
+  };
+}
+
+function goToCell() {
+  const cellX = Number(document.getElementById("cellX").value);
+  const cellY = Number(document.getElementById("cellY").value);
+
+  const sw = mapToPixel(
+    cellX * CELL,
+    cellY * CELL
+  );
+
+  const ne = mapToPixel(
+    (cellX + 1) * CELL,
+    (cellY + 1) * CELL
+  );
+
+  const center = mapToPixel(
+    cellX * CELL + CELL / 2,
+    cellY * CELL + CELL / 2
+  );
+
+  viewer.viewport.panTo(
+    viewer.viewport.imageToViewportCoordinates(
+      center.x,
+      center.y
+    )
+  );
+
+  if (selectedCellOverlay) {
+    viewer.removeOverlay(selectedCellOverlay);
+  }
+
+  const highlight = document.createElement("div");
+
+  highlight.style.position = "absolute";
+  highlight.style.border = "3px solid red";
+  highlight.style.background = "rgba(255, 0, 0, 0.15)";
+  highlight.style.boxSizing = "border-box";
+  highlight.style.pointerEvents = "none";
+
+  selectedCellOverlay = highlight;
+
+  const rect = viewer.viewport.imageToViewportRectangle(
+    sw.x,
+    ne.y,
+    ne.x - sw.x,
+    sw.y - ne.y
+  );
+
+  viewer.addOverlay({
+    element: highlight,
+    location: rect
+  });
+}
+</script>
+
+</body>
+</html>
