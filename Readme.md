@@ -1,6 +1,6 @@
 # PTR Interactive Map
 
-An interactive, deep-zoomable web version of the [Project Tamriel gridmap](https://www.nexusmods.com/morrowind/mods/46821). View it online at https://renrmt.github.io/ptr_interactive_map
+An interactive, deep-zoomable web version of the [Project Tamriel gridmap](https://www.nexusmods.com/morrowind/mods/46821). View it online at https://rendata.nl/ptr_interactive_map/
 
 Built on [OpenSeadragon](https://openseadragon.github.io/), the map streams Deep Zoom (DZI) tiles instead of loading one enormous PNG, and layers annotations (roads, borders, settlements, regions, grid) on top of the basemap as independently toggleable overlays.
 
